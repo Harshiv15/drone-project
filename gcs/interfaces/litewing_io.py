@@ -5,7 +5,7 @@ from schemas.flight_plan import FlightStep
 
 logger = logging.getLogger(__name__)
 
-class LitewingBase(BaseIO):
+class LiteWingIO(BaseIO):
     """stub until my batteries arrive"""
 
 

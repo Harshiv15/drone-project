@@ -1,52 +1,61 @@
+from enum import Enum
 from typing import Literal, Optional
+from unittest import case
+
 from pydantic import BaseModel, Field, model_validator
 
 
+class Action(str, Enum):
+    TAKEOFF = "takeoff"
+    HOVER = "hover"
+    ROTATE_CW = "rotate_cw"
+    ROTATE_CCW = "rotate_ccw"
+    FORWARD = "forward"
+    BACKWARD = "backward"
+    LEFT = "left"
+    RIGHT = "right"
+    LAND = "land"
+
 class FlightStep(BaseModel):
-    action: Literal[
-        "takeoff",
-        "hover",
-        "rotate_cw",
-        "rotate_ccw",
-        "forward",
-        "backward",
-        "left",
-        "right",
-        "land"
-    ]
-    duration_s: float | int = Field(1, gt=0)
-    distance_m: Optional[float | int] = Field(0, ge=0)
-    angle_deg: Optional[float | int] = Field(0, ge=0)
+    action: str
+    distance_m: Optional[float] = Field(0, ge=0)
+    angle_deg: Optional[float] = Field(0, ge=0)
+    duration_s: float = Field(1, gt=0)
 
 
 class SafetyLimits(BaseModel):
-    max_altitude: int = Field(15, le=15)
-    max_distance: int = Field(20, le=30)
-    min_battery: int = Field(20, ge=15)
+    max_altitude_m: float = Field(15, le=15)
+    max_distance_m: float = Field(20, le=30)
+    min_battery: float = Field(20, ge=15)
 
 
 class FlightPlan(BaseModel):
     maneuver: str
-    duration: float | int
-    max_speed: float | int
-    steps: list[FlightStep]
-    safety: SafetyLimits
+    max_speed_m_s: float
+    steps: list[FlightStep] = Field(..., min_length=1)
+    safety: SafetyLimits = SafetyLimits()
 
     @model_validator(mode="after")
     def validate_plan(self):
-        if not self.steps:
-            raise ValueError("Flight plan must contain at least one step!")
+        match self.steps[0].action:
+            case Action.TAKEOFF | Action.HOVER:
+                pass
+            case _:
+                raise ValueError("First step must be takeoff or hover!")
 
-        if self.steps[0].action not in ["takeoff", "hover"]:
-            raise ValueError("First step must be takeoff or hover!")
+        match self.steps[-1].action:
+            case x if x == Action.LAND:
+                pass
+            case _:
+                raise ValueError("Last step must be land!")
 
-        if self.steps[-1].action != "land":
-            raise ValueError("Last step must be land!")
-
-        total_duration = sum(step.duration_s for step in self.steps)
-        if total_duration > self.duration:
-            raise ValueError(
-                f"Total step duration ({total_duration}s) exceeds declared maneuver duration ({self.duration}s)!"
-            )
+        for step in self.steps:
+            match step.action:
+                case Action.FORWARD | Action.BACKWARD | Action.LEFT | Action.RIGHT:
+                    if step.angle_deg:
+                        raise ValueError(f"Translation step {step.action} cannot have a rotational component!")
+                case Action.ROTATE_CW | Action.ROTATE_CCW:
+                    if step.distance_m:
+                        raise ValueError(f"Rotation step {step.action} cannot have a translational component!")
 
         return self
